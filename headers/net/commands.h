@@ -8,7 +8,8 @@
 
 enum Command {
     SIGN_UP,
-    LOG_IN
+    LOG_IN,
+    STATUS
 };
 
 inline QByteArray pack_data(const Command cmd_type, const QStringList& parameters) {

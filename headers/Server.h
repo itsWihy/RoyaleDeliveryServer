@@ -32,7 +32,7 @@ public slots:
     void handle_error(QAbstractSocket::SocketError socketError) const;
 
 public:
-    static bool send_data_to_client(QTcpSocket *client, Command cmd_type, const QStringList &parameters);
+    static bool send_cmd_to_client(QTcpSocket *client, Command cmd_type, const QStringList &parameters);
 };
 
 

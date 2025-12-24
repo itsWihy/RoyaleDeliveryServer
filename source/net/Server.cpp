@@ -56,14 +56,15 @@ void Server::handle_client_data() const {
             QString name, password;
             stream >> name >> password;
             qDebug() << name << " and " << password;
+
             PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
-            socket->write("TRUE");
+            send_cmd_to_client(socket, STATUS, {"SIGNUP", "TRUE"}); //todo: base response on actual bool result.
             break;
     }
     // INBOX folder, OUTBOX FOLDER>
 }
 
-bool Server::send_data_to_client(QTcpSocket *client, const Command cmd_type, const QStringList &parameters) {
+bool Server::send_cmd_to_client(QTcpSocket *client, const Command cmd_type, const QStringList &parameters) {
     if (client->state() != QTcpSocket::ConnectedState) return false;
 
     const QByteArray data{pack_data(cmd_type, parameters)};
