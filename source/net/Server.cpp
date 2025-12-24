@@ -6,6 +6,7 @@
 
 #include <iostream>
 
+#include "../../headers/net/command.h"
 #include "../../headers/net/conversions.h"
 
 Server::Server() : server(this) {
@@ -40,23 +41,28 @@ void Server::client_disconnected() const {
 void Server::handle_client_data() {
     QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
 
-    //HANDLE:
-    // sign up.
-    // log in.
-    // actual mail.
-    //TODO: Correctly handle DATA. 
     QDataStream stream(socket->readAll());
     stream.setVersion(QDataStream::Qt_5_15);
 
     stream.startTransaction();
 
-    QByteArray cmd, name, pass;
-    stream >> cmd >> name >> pass;
-    qDebug() << cmd << " And " << name << " andndd" << pass;
+    quint32 length, cmd_type;
+
+    stream >> length >> cmd_type;
+    qDebug() << length << " and " << cmd_type;
 
     if (!stream.commitTransaction()) return;
 
-    socket->write("Message received by Server sdfjosdijf. I wodner how long I can make this until aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabhaabiaabjaabkaablaabmaabnaaboaabpaabqaabraabsaabtaabuaabvaabwaabxaabyaab");
+    switch (cmd_type) {
+        case SIGN_UP:
+            QString name, password;
+            stream >> name >> password;
+            qDebug() << name << " and " << password;
+            break;
+    } //TODO: clients.txt for cleint|pass. find a library.
+    // INBOX folder, OUTBOX FOLDER>
+
+    socket->write("fr");
 }
 
 void Server::handle_error(QAbstractSocket::SocketError socketError) const {

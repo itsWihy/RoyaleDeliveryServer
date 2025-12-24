@@ -8,7 +8,5 @@ int main(int argc, char *argv[]) {
 
     Server::get_instance();
 
-
-
     return a.exec();
 }
