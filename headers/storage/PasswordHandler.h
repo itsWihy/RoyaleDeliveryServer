@@ -27,6 +27,7 @@ public:
     void write_to_file();
 
     bool insert_new_client(const std::string& name, const std::string& password);
+    bool check_pass_validity(const std::string& name, const std::string& password);
 };
 
 #endif //ROYALEDELIVERYSERVER_PASSWORDHANDLER_H

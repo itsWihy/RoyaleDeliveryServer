@@ -44,10 +44,16 @@ void PasswordHandler::write_to_file() {
 }
 
 bool PasswordHandler::insert_new_client(const std::string &name, const std::string &password) {
-    if (client_to_password.find(name) != client_to_password.end()) return false; //already contaisn name;
+    if (client_to_password.find(name) != client_to_password.end()) return false;
 
     const bool result = client_to_password.try_emplace(name, password).second;
     write_to_file();
 
     return result;
+}
+
+bool PasswordHandler::check_pass_validity(const std::string &name, const std::string &password) {
+    if (client_to_password.find(name) == client_to_password.end()) return false;
+
+    return client_to_password.find(name)->second == password;
 }

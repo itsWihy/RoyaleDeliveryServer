@@ -52,17 +52,26 @@ void Server::handle_client_data() const {
     if (!stream.commitTransaction()) return;
 
     switch (cmd_type) {
-        case SIGN_UP:
+        case SIGN_UP: {
             QString name, password;
             stream >> name >> password;
 
             const bool result = PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
             send_cmd_to_client(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
-            qDebug() << name << " and " << password << " result: " << result;
 
             break;
+        }
+
+        case LOG_IN: {
+            QString name, password;
+            stream >> name >> password;
+
+            const bool result = PasswordHandler::get_instance().check_pass_validity(name.toStdString(), password.toStdString());
+            send_cmd_to_client(socket, STATUS, {"LOGIN", result == 0 ? "FALSE" : "TRUE"});
+
+            break;
+        }
     }
-    // INBOX folder, OUTBOX FOLDER>
 }
 
 bool Server::send_cmd_to_client(QTcpSocket *client, const Command cmd_type, const QStringList &parameters) {
