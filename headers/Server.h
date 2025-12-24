@@ -4,6 +4,8 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 
+#include "net/commands.h"
+
 class Server : public QObject {
     Q_OBJECT
 
@@ -26,8 +28,11 @@ public slots:
     void new_connection();
     void client_disconnected() const;
 
-    void handle_client_data();
+    void handle_client_data() const;
     void handle_error(QAbstractSocket::SocketError socketError) const;
+
+public:
+    static bool send_data_to_client(QTcpSocket *client, Command cmd_type, const QStringList &parameters);
 };
 
 

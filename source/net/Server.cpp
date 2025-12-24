@@ -6,8 +6,8 @@
 
 #include <iostream>
 
-#include "../../headers/net/command.h"
-#include "../../headers/net/conversions.h"
+#include "../../headers/net/commands.h"
+#include "../../headers/storage/PasswordHandler.h"
 
 Server::Server() : server(this) {
     server.listen(QHostAddress::Any, 5004);
@@ -38,8 +38,8 @@ void Server::client_disconnected() const {
     qDebug() << "Socket disconnected from " + client_ip_addr + ":" + QString::number(client_port);
 }
 
-void Server::handle_client_data() {
-    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+void Server::handle_client_data() const {
+    auto *socket = qobject_cast<QTcpSocket *>(sender());
 
     QDataStream stream(socket->readAll());
     stream.setVersion(QDataStream::Qt_5_15);
@@ -47,9 +47,7 @@ void Server::handle_client_data() {
     stream.startTransaction();
 
     quint32 length, cmd_type;
-
     stream >> length >> cmd_type;
-    qDebug() << length << " and " << cmd_type;
 
     if (!stream.commitTransaction()) return;
 
@@ -58,29 +56,48 @@ void Server::handle_client_data() {
             QString name, password;
             stream >> name >> password;
             qDebug() << name << " and " << password;
+            PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
+            socket->write("TRUE");
             break;
-    } //TODO: clients.txt for cleint|pass. find a library.
+    }
     // INBOX folder, OUTBOX FOLDER>
-
-    socket->write("fr");
 }
 
-void Server::handle_error(QAbstractSocket::SocketError socketError) const {
-    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
-    std::string errorMsg = socket ? socket->errorString().toStdString() : "Unknown error";
+bool Server::send_data_to_client(QTcpSocket *client, const Command cmd_type, const QStringList &parameters) {
+    if (client->state() != QTcpSocket::ConnectedState) return false;
+
+    const QByteArray data{pack_data(cmd_type, parameters)};
+
+    return client->write(data) >= 0;
+}
+
+void Server::handle_error(const QAbstractSocket::SocketError socketError) const {
+    const auto *socket = qobject_cast<QTcpSocket *>(sender());
+    const char* errorMessage = nullptr;
 
     switch (socketError) {
         case QAbstractSocket::RemoteHostClosedError:
+            errorMessage = "Remote host closed the connection";
             break;
         case QAbstractSocket::HostNotFoundError:
-            std::cout << "Error: The host was not found. Please check the host name and port settings." << std::endl;
+            errorMessage = "The host was not found. Please check the host name and port settings";
             break;
         case QAbstractSocket::ConnectionRefusedError:
-            std::cout << "Error: The connection was refused by the peer. Make sure the service is running." <<
-                    std::endl;
+            errorMessage = "The connection was refused by the peer. Make sure the service is running";
+            break;
+        case QAbstractSocket::SocketAccessError:
+            errorMessage = "Socket access error (permission issue)";
+            break;
+        case QAbstractSocket::SocketTimeoutError:
+            errorMessage = "Socket operation timed out";
+            break;
+        case QAbstractSocket::NetworkError:
+            errorMessage = "Network error";
             break;
         default:
-            std::cout << "The following error occurred: " << errorMsg << std::endl;
+            errorMessage = socket ? socket->errorString().toLocal8Bit().data() : "Unknown socket error";
             break;
     }
+
+    std::cerr << "[Socket Error] Code: " << socketError << ", Message: " << errorMessage << std::endl;
 }

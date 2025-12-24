@@ -17,8 +17,9 @@ set(PROJECT_SOURCES
         source/main.cpp
         source/net/Server.cpp
         headers/Server.h
-        headers/net/conversions.h
         headers/net/commands.h
+        source/storage/PasswordHandler.cpp
+        headers/storage/PasswordHandler.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
