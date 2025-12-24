@@ -55,10 +55,11 @@ void Server::handle_client_data() const {
         case SIGN_UP:
             QString name, password;
             stream >> name >> password;
-            qDebug() << name << " and " << password;
 
-            PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
-            send_cmd_to_client(socket, STATUS, {"SIGNUP", "TRUE"}); //todo: base response on actual bool result.
+            const bool result = PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
+            send_cmd_to_client(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
+            qDebug() << name << " and " << password << " result: " << result;
+
             break;
     }
     // INBOX folder, OUTBOX FOLDER>
