@@ -10,7 +10,6 @@
 
 Server::Server() : server(this) {
     server.listen(QHostAddress::Any, 5004);
-
     connect(&server, &QTcpServer::newConnection, this, &Server::new_connection);
 }
 
@@ -21,7 +20,8 @@ void Server::new_connection() {
     const int port = client->peerPort();
 
     connect(client, &QTcpSocket::disconnected, this, &Server::client_disconnected);
-    connect(client, &QTcpSocket::readyRead,this, &Server::handle_client_data);
+    connect(client, &QTcpSocket::readyRead, this, &Server::handle_client_data);
+    connect(client, &QAbstractSocket::errorOccurred, this, &Server::handle_error);
 
     clients.push_back(client);
 
@@ -29,7 +29,7 @@ void Server::new_connection() {
 }
 
 void Server::client_disconnected() const {
-    const QTcpSocket* client = qobject_cast<QTcpSocket*>(sender());
+    const QTcpSocket *client = qobject_cast<QTcpSocket *>(sender());
 
     const QString client_ip_addr = client->peerAddress().toString();
     const int client_port = client->peerPort();
@@ -38,31 +38,43 @@ void Server::client_disconnected() const {
 }
 
 void Server::handle_client_data() {
-    QTcpSocket* client = qobject_cast<QTcpSocket*>(sender());
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
 
-    QString data = "";
+    //HANDLE:
+    // sign up.
+    // log in.
+    // actual mail.
+    //TODO: Correctly handle DATA. 
+    QDataStream stream(socket->readAll());
+    stream.setVersion(QDataStream::Qt_5_15);
 
-    QByteArray buffer;
-    qint32 size = 0;
+    stream.startTransaction();
 
-    QDataStream client_stream(client);
-    //todo: Idk why QIODevice::read (QBuffer): WriteOnly device
-    // search online. stop fucking around idiot
+    QByteArray cmd, name, pass;
+    stream >> cmd >> name >> pass;
+    qDebug() << cmd << " And " << name << " andndd" << pass;
 
-    while (client->bytesAvailable() > 0) {
-        buffer.append(client->readAll());
+    if (!stream.commitTransaction()) return;
 
-        while ((size == 0 && buffer.size() >= 4) || (size > 0 && buffer.size() >= size)) {
-            if (size == 0 && buffer.size() >= 4) {
-                size = byte_array_to_int( buffer.mid(0, 4));
-                buffer.remove(0, 4);
-            }
+    socket->write("Message received by Server sdfjosdijf. I wodner how long I can make this until aaaabaaacaaadaaaeaaafaaagaaahaaaiaaajaaakaaalaaamaaanaaaoaaapaaaqaaaraaasaaataaauaaavaaawaaaxaaayaaazaabbaabcaabdaabeaabfaabgaabhaabiaabjaabkaablaabmaabnaaboaabpaabqaabraabsaabtaabuaabvaabwaabxaabyaab");
+}
 
-            if (size > 0 && buffer.size() >= size) {
-                data = QString::fromUtf8(buffer.mid(0, size));
-            }
-        }
+void Server::handle_error(QAbstractSocket::SocketError socketError) const {
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+    std::string errorMsg = socket ? socket->errorString().toStdString() : "Unknown error";
+
+    switch (socketError) {
+        case QAbstractSocket::RemoteHostClosedError:
+            break;
+        case QAbstractSocket::HostNotFoundError:
+            std::cout << "Error: The host was not found. Please check the host name and port settings." << std::endl;
+            break;
+        case QAbstractSocket::ConnectionRefusedError:
+            std::cout << "Error: The connection was refused by the peer. Make sure the service is running." <<
+                    std::endl;
+            break;
+        default:
+            std::cout << "The following error occurred: " << errorMsg << std::endl;
+            break;
     }
-
-    std::cout << "Received " << data.data() << "";
 }

@@ -1,0 +1,13 @@
+//
+// Created by Wihy on 12/23/25.
+//
+
+#ifndef ROYALEDELIVERYSERVER_COMMANDS_H
+#define ROYALEDELIVERYSERVER_COMMANDS_H
+
+enum Command {
+    SIGN_UP,
+    LOG_IN
+};
+
+#endif //ROYALEDELIVERYSERVER_COMMANDS_H

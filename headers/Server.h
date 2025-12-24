@@ -27,6 +27,7 @@ public slots:
     void client_disconnected() const;
 
     void handle_client_data();
+    void handle_error(QAbstractSocket::SocketError socketError) const;
 };
 
 
