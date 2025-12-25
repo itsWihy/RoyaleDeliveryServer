@@ -6,6 +6,12 @@
 
 #include <fstream>
 #include <iostream>
+#include "QCryptographicHash"
+
+std::string hash(const std::string &password) {
+    const QByteArray data = QString(password.data()).toUtf8();
+    return QString::fromUtf8(QCryptographicHash::hash(data, QCryptographicHash::Sha256)).toStdString();
+}
 
 PasswordHandler::PasswordHandler() {
     load_from_file();
@@ -31,12 +37,11 @@ void PasswordHandler::load_from_file() {
 
 void PasswordHandler::write_to_file() {
     std::ofstream file{"../data/passwords.txt"};
-    file.clear(); //todo: So efficient. delete and revert each time!
+    file.clear();
 
-    for (auto &pair: client_to_password) {
-        if (pair.first.empty() || pair.second.empty()) continue;
-        //todo: LOL PLAIN TEXT PASSWORD
-        file << pair.first << ":" << "" << pair.second << "\n";
+    for (auto &[name, hashed_pass]: client_to_password) {
+        if (name.empty() || hashed_pass.empty()) continue;
+        file << name << ":" << "" << hashed_pass << "\n";
     }
 
     file << std::endl;
@@ -46,7 +51,7 @@ void PasswordHandler::write_to_file() {
 bool PasswordHandler::insert_new_client(const std::string &name, const std::string &password) {
     if (client_to_password.find(name) != client_to_password.end()) return false;
 
-    const bool result = client_to_password.try_emplace(name, password).second;
+    const bool result = client_to_password.try_emplace(name, hash(password)).second;
     write_to_file();
 
     return result;
@@ -55,5 +60,5 @@ bool PasswordHandler::insert_new_client(const std::string &name, const std::stri
 bool PasswordHandler::check_pass_validity(const std::string &name, const std::string &password) {
     if (client_to_password.find(name) == client_to_password.end()) return false;
 
-    return client_to_password.find(name)->second == password;
+    return client_to_password.find(name)->second == hash(password);
 }
