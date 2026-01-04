@@ -8,6 +8,7 @@
 
 #include "../../headers/net/commands.h"
 #include "../../headers/storage/ClientHandler.h"
+#include "../../headers/storage/MailHandler.h"
 
 Server::Server() : server(this) {
     server.listen(QHostAddress::Any, 5004);
@@ -36,8 +37,8 @@ void Server::client_disconnected() const {
     qDebug() << "Socket disconnected from " + client_ip_addr + ":" + QString::number(client_port);
 }
 
-void Server::handle_client_data() {
-    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
+void Server::handle_client_data() const {
+    auto *socket = qobject_cast<QTcpSocket *>(sender());
 
     QDataStream stream(socket->readAll());
     stream.setVersion(QDataStream::Qt_5_15);
@@ -55,10 +56,10 @@ void Server::handle_client_data() {
             stream >> name >> password;
 
             const bool result = ClientHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
-            send_cmd_to_client(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
+            send_cmd_to_client<QString>(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
 
             if (result == 1)
-                client_ip_to_name.try_emplace(socket->peerAddress().toString(), name);
+                ClientHandler::get_instance().insert_ip_to_client(socket, name.toStdString());
 
             break;
         }
@@ -68,20 +69,28 @@ void Server::handle_client_data() {
             stream >> name >> password;
 
             const bool result = ClientHandler::get_instance().is_password_valid(name.toStdString(), password.toStdString());
-            send_cmd_to_client(socket, STATUS, {"LOGIN", result == 0 ? "FALSE" : "TRUE"});
+            send_cmd_to_client<QString>(socket, STATUS, {"LOGIN", result == 0 ? "FALSE" : "TRUE"});
 
             if (result == 1)
-                client_ip_to_name.try_emplace(socket->peerAddress().toString(), name);
+                ClientHandler::get_instance().insert_ip_to_client(socket, name.toStdString());
 
             break;
+        }
+
+        case ALL_MAILS: {
+            auto emails = MailHandler::get_client_mails(ClientHandler::get_instance().get_name_from_client(socket));
+            const quint32 emails_count = emails.count();
+
+            send_cmd_to_client<Email>(socket, ALL_MAILS, {emails}, emails_count);
         }
     }
 }
 
-bool Server::send_cmd_to_client(QTcpSocket *client, const Command cmd_type, const QStringList &parameters) {
+template<typename T>
+bool Server::send_cmd_to_client(QTcpSocket *client, const Command cmd_type, const QVector<T> &parameters, const quint32 amount) {
     if (client->state() != QTcpSocket::ConnectedState) return false;
 
-    const QByteArray data{pack_data(cmd_type, parameters)};
+    const QByteArray data{pack_data(cmd_type, parameters, amount)};
 
     return client->write(data) >= 0;
 }
@@ -115,9 +124,4 @@ void Server::handle_error(const QAbstractSocket::SocketError socketError) const 
     }
 
     std::cerr << "[Socket Error] Code: " << socketError << ", Message: " << errorMessage << std::endl;
-}
-
-std::string Server::get_name_from_client(const QTcpSocket *client) const {
-    const auto ip_from_client = client->peerAddress().toString();
-    return client_ip_to_name.at(ip_from_client).toStdString();
 }

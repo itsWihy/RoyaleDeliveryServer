@@ -11,8 +11,8 @@ int main(int argc, char *argv[]) {
 
     Server::get_instance();
     SMTPServer::get_instance();
+    MailHandler::get_instance();
     ClientHandler::get_instance().write_to_file();
-    MailHandler::get_instance().store_mail("f", "F");
 
     return a.exec();
 }

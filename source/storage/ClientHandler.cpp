@@ -6,6 +6,8 @@
 
 #include <fstream>
 #include <iostream>
+#include <qhostaddress.h>
+
 #include "QCryptographicHash"
 #include "../../headers/Utilities.h"
 #include "../../headers/storage/MailHandler.h"
@@ -55,7 +57,7 @@ bool ClientHandler::insert_new_client(const std::string &name, const std::string
     const bool result = client_to_password.try_emplace(name, hash(password)).second;
     write_to_file();
 
-    MailHandler::get_instance().register_client(name);
+    MailHandler::register_client(name);
 
     return result;
 }
@@ -64,4 +66,13 @@ bool ClientHandler::is_password_valid(const std::string &name, const std::string
     if (!has_client(name)) return false;
 
     return client_to_password.find(name)->second == hash(password);
+}
+
+void ClientHandler::insert_ip_to_client(const QTcpSocket* client, const std::string &name) {
+    client_ip_to_name.try_emplace(client->peerAddress().toString().toStdString(), name);
+}
+
+std::string ClientHandler::get_name_from_client(const QTcpSocket *client) const {
+        const auto ip_from_client = client->peerAddress().toString();
+        return client_ip_to_name.at(ip_from_client.toStdString());
 }

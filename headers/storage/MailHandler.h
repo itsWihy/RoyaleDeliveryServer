@@ -4,11 +4,10 @@
 
 #ifndef ROYALEDELIVERYSERVER_MAILHANDLER_H
 #define ROYALEDELIVERYSERVER_MAILHANDLER_H
+#include <filesystem>
 #include <qglobal.h>
 #include <string>
-
-
-
+#include "../net/commands.h"
 
 class MailHandler {
 public:
@@ -20,10 +19,14 @@ public:
     MailHandler(const MailHandler&) = delete;
     void operator=(const MailHandler&) = delete;
 
+private:
+    static Email read_from_file(const std::filesystem::path& path);
 
 public:
-    bool register_client(const std::string& name); //create the folder if doesn't exist.
-    void store_mail(const std::string& client_name, const std::string& mail_data);
+    static bool register_client(const std::string& name);
+    static void store_mail(const std::string& client_name, const std::string& mail_data);
+
+    static QVector<Email> get_client_mails(const std::string& client_name);
 
     static std::string hash_mail(const std::string& mail_data);
 };

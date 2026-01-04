@@ -5,6 +5,7 @@
 #ifndef ROYALEDELIVERYSERVER_PASSWORDHANDLER_H
 #define ROYALEDELIVERYSERVER_PASSWORDHANDLER_H
 #include <qstring.h>
+#include <QTcpSocket>
 #include <unordered_map>
 
 class ClientHandler {
@@ -19,6 +20,7 @@ public:
 
 private:
     std::unordered_map<std::string, std::string> client_to_password;
+    std::unordered_map<std::string, std::string> client_ip_to_name{};
 
     ClientHandler();
 
@@ -29,6 +31,10 @@ public:
     bool has_client(const std::string& name);
     bool insert_new_client(const std::string& name, const std::string& password);
     bool is_password_valid(const std::string& name, const std::string& password);
+
+    void insert_ip_to_client(const QTcpSocket* client, const std::string& name);
+    std::string get_name_from_client(const QTcpSocket *client) const;
+
 };
 
 #endif //ROYALEDELIVERYSERVER_PASSWORDHANDLER_H

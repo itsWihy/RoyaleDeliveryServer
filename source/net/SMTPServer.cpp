@@ -8,6 +8,7 @@
 #include <QTcpSocket>
 
 #include "../../headers/Server.h"
+#include "../../headers/storage/ClientHandler.h"
 #include "../../headers/storage/MailHandler.h"
 
 SMTPServer::SMTPServer() : server(this), state(State::UNSET) {
@@ -25,7 +26,7 @@ void SMTPServer::handle_mail_body(QTcpSocket *client) {
             client->write("250 OK: Message accepted for delivery\r\n");
             state = State::HELO;
 
-            MailHandler::get_instance().store_mail(Server::get_instance().get_name_from_client(client), totalData.toStdString());
+            MailHandler::store_mail(ClientHandler::get_instance().get_name_from_client(client), totalData.toStdString());
             qDebug() << "RECEIVED: " << totalData;
 
             break;
