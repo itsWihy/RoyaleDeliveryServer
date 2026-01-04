@@ -26,7 +26,19 @@ void SMTPServer::handle_mail_body(QTcpSocket *client) {
             client->write("250 OK: Message accepted for delivery\r\n");
             state = State::HELO;
 
-            MailHandler::store_mail(ClientHandler::get_instance().get_name_from_client(client), totalData.toStdString());
+
+            //Store mail on SENDER
+            MailHandler::store_mail(ClientHandler::get_instance().get_name_from_client(client), Email{totalData, totalData, totalData, totalData});
+
+            //Store mail for the RECEIVER if exists
+            Email flipped = MailHandler::read_from_string(totalData);
+
+            const auto temp = flipped.to;
+            flipped.to = flipped.from;
+            flipped.from = temp;
+
+            MailHandler::store_mail(flipped.to.toStdString(), flipped);
+//TODO: TEST ABOVE!!!!!!!!!!!!!!
             qDebug() << "RECEIVED: " << totalData;
 
             break;

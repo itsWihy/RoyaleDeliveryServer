@@ -23,11 +23,14 @@ private:
     static Email read_from_file(const std::filesystem::path& path);
 
 public:
-    static bool register_client(const std::string& name);
-    static void store_mail(const std::string& client_name, const std::string& mail_data);
+    static Email read_from_string(const QString &mail_data);
 
+    static bool register_client(const std::string& name);
+    static void store_mail(const std::string& client_name, const Email& email);
+
+    static void delete_mail(const QString &hash);
     static QVector<Email> get_client_mails(const std::string& client_name);
 
-    static std::string hash_mail(const std::string& mail_data);
+    static std::string hash_mail(const Email& mail);
 };
 #endif //ROYALEDELIVERYSERVER_MAILHANDLER_H

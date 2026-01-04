@@ -12,13 +12,35 @@
 #include "../../headers/Utilities.h"
 #include "../../headers/storage/ClientHandler.h"
 
-Email MailHandler::read_from_file(const std::filesystem::path& path) {
+Email MailHandler::read_from_string(const QString &mail_data) {
+    Email email;
+    QStringList lines = mail_data.split("\n");
+
+    int row = 0;
+    auto readCleanLine = [&](const QString &prefix) {
+        return lines[row++].remove(prefix, Qt::CaseInsensitive).trimmed();
+    };
+
+    email.to = readCleanLine("To: ");
+    email.from = readCleanLine("From: ");
+    email.subject = readCleanLine("Subject: ");
+
+    int pos = 0;
+    for(int i = 0; i < 3; ++i)
+        pos = mail_data.indexOf('\n', pos) + 1;
+
+    email.content = mail_data.mid(pos).trimmed();
+
+    return email;
+}
+
+Email MailHandler::read_from_file(const std::filesystem::path &path) {
     Email email;
     std::ifstream file{path};
     std::string line;
 
     auto readCleanLine = [&](const QString &prefix) {
-        if (std::string l; getline(file,l)) {
+        if (std::string l; getline(file, l)) {
             QString qline = QString::fromStdString(l);
             return qline.remove(prefix, Qt::CaseInsensitive).trimmed();
         }
@@ -27,8 +49,8 @@ Email MailHandler::read_from_file(const std::filesystem::path& path) {
     };
 
     email.to = readCleanLine("To: ");
-    email.from =  readCleanLine("From: ");
-    email.subject =  readCleanLine("Subject: ");
+    email.from = readCleanLine("From: ");
+    email.subject = readCleanLine("Subject: ");
 
     std::string data;
     while (getline(file, line))
@@ -39,19 +61,25 @@ Email MailHandler::read_from_file(const std::filesystem::path& path) {
     return email;
 }
 
-bool MailHandler::register_client(const std::string& name) {
+bool MailHandler::register_client(const std::string &name) {
     if (!ClientHandler::get_instance().has_client(name)) return false;
 
-    const std::filesystem::path user_folder {"../data/users/" + name};
-    return std::filesystem::create_directories(user_folder);
+    const std::filesystem::path user_folder{"../data/users/" + name};
+    std::filesystem::create_directories(user_folder);
+
+    return true;
 }
 
-void MailHandler::store_mail(const std::string& client_name, const std::string& mail_data) {
-    const auto mail_file_name = hash_mail(mail_data);
+void MailHandler::store_mail(const std::string &client_name, const Email &email) {
+    if (!register_client(client_name)) return;
 
-    std::ofstream file{"../data/users/" + client_name + "/" + mail_file_name + ".txt"};
+    const auto mail_file_name = hash_mail(email);
+    const auto hex_hash = QByteArray{mail_file_name.c_str()};
 
-    file << mail_data;
+    std::ofstream file{"../data/users/" + client_name + "/" + hex_hash.toHex().toStdString() + ".txt"};
+
+
+    file << email.content.toStdString();
 
     file << std::endl;
     file.close();
@@ -62,21 +90,28 @@ QVector<Email> MailHandler::get_client_mails(const std::string &client_name) {
 
     QVector<Email> mails;
 
-    for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(directory)) {
-        std::cout << dirEntry << std::endl;
-
-        Email mail {read_from_file(dirEntry.path())};
+    for (const auto &dirEntry: std::filesystem::recursive_directory_iterator(directory)) {
+        Email mail{read_from_file(dirEntry.path())};
         mails.append(mail);
     }
 
     return mails;
 }
 
-std::string MailHandler::hash_mail(const std::string &mail_data) {
-    std::string result = hash(mail_data);
-    const auto time =  std::chrono::system_clock::now().time_since_epoch().count();
+void MailHandler::delete_mail(const QString &hash) {
+    const std::filesystem::path directory = "../data/users/";
 
-    result.append(std::to_string(time));
+    for (const auto &dirEntry: std::filesystem::directory_iterator(directory)) {
+        auto hex_hash = QByteArray{hash.toStdString().c_str()};
+        std::filesystem::path file_path{dirEntry.path().string() + "/" + hex_hash.toHex().toStdString() + ".txt"};
 
+        if (std::ifstream file{file_path}; !file.good()) continue;
+
+        std::filesystem::remove(file_path);
+    }
+}
+
+std::string MailHandler::hash_mail(const Email &mail) {
+    std::string result = hash(mail.content.toStdString());
     return result;
 }

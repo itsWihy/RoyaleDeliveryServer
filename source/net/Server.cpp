@@ -82,6 +82,15 @@ void Server::handle_client_data() const {
             const quint32 emails_count = emails.count();
 
             send_cmd_to_client<Email>(socket, ALL_MAILS, {emails}, emails_count);
+            break;
+        }
+
+        case DELETE_A_MAIL: {
+            QString mail_hash;
+            stream >> mail_hash;
+
+            MailHandler::delete_mail(mail_hash);
+            break;
         }
     }
 }
