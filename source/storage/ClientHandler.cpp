@@ -2,23 +2,20 @@
 // Created by Wihy on 12/24/25.
 //
 
-#include "../../headers/storage/PasswordHandler.h"
+#include "../../headers/storage/ClientHandler.h"
 
 #include <fstream>
 #include <iostream>
 #include "QCryptographicHash"
+#include "../../headers/Utilities.h"
+#include "../../headers/storage/MailHandler.h"
 
-std::string hash(const std::string &password) {
-    const QByteArray data = QString(password.data()).toUtf8();
-    return QString::fromUtf8(QCryptographicHash::hash(data, QCryptographicHash::Sha256)).toStdString();
-}
-
-PasswordHandler::PasswordHandler() {
+ClientHandler::ClientHandler() {
     load_from_file();
 }
 
 //side-effects: change std_hash_map.
-void PasswordHandler::load_from_file() {
+void ClientHandler::load_from_file() {
     std::ifstream file{"../data/passwords.txt"};
     std::string line;
 
@@ -35,7 +32,7 @@ void PasswordHandler::load_from_file() {
     file.close();
 }
 
-void PasswordHandler::write_to_file() {
+void ClientHandler::write_to_file() {
     std::ofstream file{"../data/passwords.txt"};
     file.clear();
 
@@ -48,17 +45,23 @@ void PasswordHandler::write_to_file() {
     file.close();
 }
 
-bool PasswordHandler::insert_new_client(const std::string &name, const std::string &password) {
-    if (client_to_password.find(name) != client_to_password.end()) return false;
+bool ClientHandler::has_client(const std::string &name) {
+    return client_to_password.find(name) != client_to_password.end();
+}
+
+bool ClientHandler::insert_new_client(const std::string &name, const std::string &password) {
+    if (has_client(name)) return false;
 
     const bool result = client_to_password.try_emplace(name, hash(password)).second;
     write_to_file();
 
+    MailHandler::get_instance().register_client(name);
+
     return result;
 }
 
-bool PasswordHandler::check_pass_validity(const std::string &name, const std::string &password) {
-    if (client_to_password.find(name) == client_to_password.end()) return false;
+bool ClientHandler::is_password_valid(const std::string &name, const std::string &password) {
+    if (!has_client(name)) return false;
 
     return client_to_password.find(name)->second == hash(password);
 }

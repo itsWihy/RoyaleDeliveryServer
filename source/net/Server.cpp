@@ -7,7 +7,7 @@
 #include <iostream>
 
 #include "../../headers/net/commands.h"
-#include "../../headers/storage/PasswordHandler.h"
+#include "../../headers/storage/ClientHandler.h"
 
 Server::Server() : server(this) {
     server.listen(QHostAddress::Any, 5004);
@@ -24,8 +24,6 @@ void Server::new_connection() {
     connect(client, &QTcpSocket::readyRead, this, &Server::handle_client_data);
     connect(client, &QAbstractSocket::errorOccurred, this, &Server::handle_error);
 
-    clients.push_back(client);
-
     qDebug() << "Socket connected from " + ipAddress + ":" + QString::number(port);
 }
 
@@ -38,8 +36,8 @@ void Server::client_disconnected() const {
     qDebug() << "Socket disconnected from " + client_ip_addr + ":" + QString::number(client_port);
 }
 
-void Server::handle_client_data() const {
-    auto *socket = qobject_cast<QTcpSocket *>(sender());
+void Server::handle_client_data() {
+    QTcpSocket *socket = qobject_cast<QTcpSocket *>(sender());
 
     QDataStream stream(socket->readAll());
     stream.setVersion(QDataStream::Qt_5_15);
@@ -56,8 +54,11 @@ void Server::handle_client_data() const {
             QString name, password;
             stream >> name >> password;
 
-            const bool result = PasswordHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
+            const bool result = ClientHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
             send_cmd_to_client(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
+
+            if (result == 1)
+                client_ip_to_name.try_emplace(socket->peerAddress().toString(), name);
 
             break;
         }
@@ -66,8 +67,11 @@ void Server::handle_client_data() const {
             QString name, password;
             stream >> name >> password;
 
-            const bool result = PasswordHandler::get_instance().check_pass_validity(name.toStdString(), password.toStdString());
+            const bool result = ClientHandler::get_instance().is_password_valid(name.toStdString(), password.toStdString());
             send_cmd_to_client(socket, STATUS, {"LOGIN", result == 0 ? "FALSE" : "TRUE"});
+
+            if (result == 1)
+                client_ip_to_name.try_emplace(socket->peerAddress().toString(), name);
 
             break;
         }
@@ -111,4 +115,9 @@ void Server::handle_error(const QAbstractSocket::SocketError socketError) const 
     }
 
     std::cerr << "[Socket Error] Code: " << socketError << ", Message: " << errorMessage << std::endl;
+}
+
+std::string Server::get_name_from_client(const QTcpSocket *client) const {
+    const auto ip_from_client = client->peerAddress().toString();
+    return client_ip_to_name.at(ip_from_client).toStdString();
 }

@@ -18,8 +18,13 @@ set(PROJECT_SOURCES
         source/net/Server.cpp
         headers/Server.h
         headers/net/commands.h
-        source/storage/PasswordHandler.cpp
-        headers/storage/PasswordHandler.h
+        source/storage/ClientHandler.cpp
+        headers/storage/ClientHandler.h
+        source/storage/MailHandler.cpp
+        headers/storage/MailHandler.h
+        source/net/SMTPServer.cpp
+        headers/SMTPServer.h
+        headers/Utilities.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

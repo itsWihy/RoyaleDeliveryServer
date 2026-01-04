@@ -19,8 +19,8 @@ public:
     void operator=(const Server&) = delete;
 
 private:
+    std::unordered_map<QString, QString> client_ip_to_name{};
     QTcpServer server{};
-    QVector<QTcpSocket*> clients{};
 
     Server();
 
@@ -28,10 +28,11 @@ public slots:
     void new_connection();
     void client_disconnected() const;
 
-    void handle_client_data() const;
+    void handle_client_data();
     void handle_error(QAbstractSocket::SocketError socketError) const;
 
 public:
+    std::string get_name_from_client(const QTcpSocket *client) const;
     static bool send_cmd_to_client(QTcpSocket *client, Command cmd_type, const QStringList &parameters);
 };
 
