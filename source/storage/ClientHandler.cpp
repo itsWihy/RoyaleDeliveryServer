@@ -22,8 +22,13 @@ void ClientHandler::load_from_file() {
     std::string line;
 
     while (getline(file, line)) {
-        const std::string client_name{line.substr(0, line.find_first_of(':'))};
-        const std::string password{line.substr(line.find_first_of(':') + 1, line.size() - 1)};
+        if (line.empty()) continue;
+
+        size_t position = line.find(':');
+        if (position == std::string::npos) continue;
+
+        const std::string client_name{line.substr(0, position)};
+        const std::string password{line.substr(position + 1)};
 
         if (client_name.empty() || password.empty()) continue;
 
@@ -40,10 +45,9 @@ void ClientHandler::write_to_file() {
 
     for (auto &[name, hashed_pass]: client_to_password) {
         if (name.empty() || hashed_pass.empty()) continue;
-        file << name << ":" << "" << hashed_pass << "\n";
+        file << name << ":"  << hashed_pass << "\n";
     }
 
-    file << std::endl;
     file.close();
 }
 
