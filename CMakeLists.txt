@@ -25,6 +25,7 @@ set(PROJECT_SOURCES
         source/net/SMTPServer.cpp
         headers/SMTPServer.h
         headers/Utilities.h
+        headers/SslServer.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

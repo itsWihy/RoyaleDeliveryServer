@@ -5,161 +5,180 @@
 #include "../../headers/SMTPServer.h"
 
 #include <iostream>
-#include <QTcpSocket>
+#include <QSslSocket>
 
 #include "../../headers/Server.h"
 #include "../../headers/storage/ClientHandler.h"
 #include "../../headers/storage/MailHandler.h"
 
-SMTPServer::SMTPServer() : server(this), state(State::UNSET) {
-    server.listen(QHostAddress::Any, 2500);
+SMTPServer::SMTPServer() : server() {
+    if (!server.listen(QHostAddress::Any, 2500))
+        qCritical() << "SMTP Server could not start:" << server.errorString();
+    else
+        qDebug() << "SMTP Server listening on port 2500";
+
     connect(&server, &QTcpServer::newConnection, this, &SMTPServer::new_connection);
 }
 
-void SMTPServer::handle_mail_body(QTcpSocket *client) {
-    QString totalData = "";
-
+void SMTPServer::handle_mail_body(QSslSocket *client, SmtpSession &session) {
     while (client->canReadLine()) {
         QString currentLine = QString::fromLatin1(client->readLine());
 
         if (currentLine.trimmed() == ".") {
             client->write("250 OK: Message accepted for delivery\r\n");
-            state = State::HELO;
+            session.state = State::HELO;
 
-            //Store mail on SENDER
-            MailHandler::store_mail(ClientHandler::get_instance().get_name_from_client(client), Email{totalData, totalData, totalData, totalData});
+            const Email mail = MailHandler::read_from_string(session.total_data);
 
-            //Store mail for the RECEIVER if exists
-            Email flipped = MailHandler::read_from_string(totalData);
+            const std::string senderName = ClientHandler::get_instance().get_name_from_client(client);
+            MailHandler::store_mail(senderName, mail);
 
-            const auto temp = flipped.to;
-            flipped.to = flipped.from;
-            flipped.from = temp;
+            const std::string receiverName = mail.to.split('@').first().toStdString();
+            MailHandler::store_mail(receiverName, mail);
 
-            MailHandler::store_mail(flipped.to.toStdString(), flipped);
+            qDebug() << "Email delivered from" << QString::fromStdString(senderName)
+                    << "to" << QString::fromStdString(receiverName);
 
-            qDebug() << "RECEIVED: " << totalData;
-
+            session.total_data.clear();
             break;
         }
 
-        totalData += currentLine;
+        session.total_data += currentLine;
     }
-
 }
 
-bool SMTPServer::new_connection() {
-    QTcpSocket *client = server.nextPendingConnection();
+void SMTPServer::new_connection() {
+    while (server.hasPendingConnections()) {
+        auto client = qobject_cast<QSslSocket *>(server.nextPendingConnection());
+        if (!client) continue;
 
-    connect(client, &QTcpSocket::disconnected, this, &SMTPServer::client_disconnected);
-    connect(client, &QTcpSocket::readyRead, this, &SMTPServer::handle_client_data);
-    connect(client, &QAbstractSocket::errorOccurred, this, &SMTPServer::handle_error);
+        SmtpSession session;
+        session.state = State::UNSET;
+        sessions.insert(client, session);
 
-    keep_connection.try_emplace(client, client_status{true, false});
+        connect(client, &QSslSocket::disconnected, this, &SMTPServer::client_disconnected);
+        connect(client, &QSslSocket::readyRead, this, &SMTPServer::handle_client_data);
 
-    qDebug() << "SEND SERVICe READY TO CLIENT" << client->write("220 Service Ready.\r\n");
+        //have to use old syntax else doesnt work
+        connect(client, SIGNAL(sslErrors(QList<QSslError>)), this, SLOT(handle_ssl_errors(QList<QSslError>)));
 
-    return false;
+        qDebug() << "New connection from:" << client->peerAddress().toString();
+        client->write("220 Royale Delivery Service Ready\r\n");
+    }
 }
 
 void SMTPServer::client_disconnected() {
-    auto *client = qobject_cast<QTcpSocket *>(sender());
-
-    keep_connection.at(client).is_connected = false;
-    keep_connection.at(client).has_started_transaction = false;
-
-    qDebug("Client disconnected buddy");
+    if (auto *client = qobject_cast<QSslSocket *>(sender())) {
+        sessions.remove(client);
+        qDebug() << "Client disconnected, session cleared.";
+    }
 }
 
 void SMTPServer::handle_client_data() {
-    auto *client = qobject_cast<QTcpSocket *>(sender());
+    auto *client = qobject_cast<QSslSocket *>(sender());
+    if (!client || !sessions.contains(client)) return;
 
-    if (state == State::DATA) {
-        handle_mail_body(client);
+    SmtpSession &session = sessions[client];
+
+    if (session.state == State::DATA) {
+        handle_mail_body(client, session);
         return;
     }
 
-    QString line = QString::fromLatin1(client->readLine()).trimmed();
+    const QString line = QString::fromLatin1(client->readLine()).trimmed();
     if (line.isEmpty()) return;
 
-    qDebug() << "Received command:" << line;
+    qDebug() << "Client" << client->peerAddress().toString() << " sent:" << line;
 
-    if (line.startsWith("HELO", Qt::CaseInsensitive)) {
-        state = State::HELO;
-        client->write("250 Hello\r\n");
-    } else if (line.startsWith("EHLO", Qt::CaseInsensitive)) {
-        state = State::HELO;
-        client->write("250-Hello\r\n250-AUTH LOGIN\r\n250-AUTH=LOGIN\r\n250 PIPELINING\r\n");
+    if (line.startsWith("STARTTLS", Qt::CaseInsensitive)) {
+        client->write("220 Ready to start TLS\r\n");
+        client->flush();
+
+        client->setLocalCertificate("../server.crt");
+        client->setPrivateKey("../server.key");
+
+        client->startServerEncryption();
+        return; //next readyRead will be encrypted. stop here.
+    }
+
+    if (line.startsWith("HELO", Qt::CaseInsensitive) || line.startsWith("EHLO", Qt::CaseInsensitive)) {
+        session.state = State::HELO;
+        if (line.startsWith("EHLO", Qt::CaseInsensitive)) {
+            client->write("250-Hello\r\n250-AUTH LOGIN\r\n250-AUTH=LOGIN\r\n250 PIPELINING\r\n");
+        } else {
+            client->write("250 Hello\r\n");
+        }
+    } else if (line.startsWith("AUTH LOGIN", Qt::CaseInsensitive)) {
+        session.state = State::AUTH_USER;
+        client->write("334 VXNlcm5hbWU6\r\n"); //Usernmae
+    } else if (session.state == State::AUTH_USER) {
+        session.client_name = QByteArray::fromBase64(line.toLatin1());
+        session.state = State::AUTH_PASS;
+        client->write("334 UGFzc3dvcmQ6\r\n"); //asks for psswrod
+    } else if (session.state == State::AUTH_PASS) {
+        QString password = QByteArray::fromBase64(line.toLatin1());
+
+        if (ClientHandler::get_instance().is_hashed_password_valid(session.client_name.toStdString(),
+                                                                   password.toStdString())) {
+            session.is_authenticated = true;
+            session.state = State::HELO;
+            client->write("235 Authentication successful\r\n");
+        } else
+            client->write("535 Authentication credentials invalid\r\n");
     } else if (line.startsWith("MAIL FROM:", Qt::CaseInsensitive)) {
-        if (state < State::HELO) {
-            client->write("503 Bad Sequence\r\n");
+        if (!session.is_authenticated) {
+            client->write("530 5.7.0 Authentication required\r\n");
             return;
         }
+
+        if (session.state < State::HELO) {
+            client->write("503 Bad Sequence: Send HELO/EHLO first\r\n");
+            return;
+        }
+        session.sender = line.mid(10).trimmed().remove('<').remove('>');
+        session.state = State::MAIL_FROM;
         client->write("250 Sender ok\r\n");
-        state = State::MAIL_FROM;
     } else if (line.startsWith("RCPT TO:", Qt::CaseInsensitive)) {
-        if (state < State::MAIL_FROM) {
-            client->write("503 Bad Sequence\r\n");
+        if (session.state < State::MAIL_FROM) {
+            client->write("503 Bad Sequence: Send MAIL FROM first\r\n");
             return;
         }
 
-        state = State::RCPT_TO;
+        session.recipient = line.mid(8).trimmed().remove('<').remove('>');
+        session.state = State::RCPT_TO;
         client->write("250 Recipient ok\r\n");
-    } else if (line.startsWith("VRFY ", Qt::CaseInsensitive)) {
-        client->write("252 Verifiyng isn't possible, but accepting.\r\n");
-    } else if (line.compare("NOOP", Qt::CaseInsensitive) == 0) {
-        client->write("250 Ok\r\n");
-    } else if (line.compare("RSET", Qt::CaseInsensitive) == 0) {
-        state = State::HELO;
-        keep_connection.at(client).has_started_transaction = false;
+    } else if (line.compare("DATA", Qt::CaseInsensitive) == 0) {
+        if (session.state < State::RCPT_TO) {
+            client->write("503 Bad Sequence: Send RCPT TO first\r\n");
+            return;
+        }
 
-        client->write("250 Ok\r\n");
+        session.state = State::DATA;
+        client->write("354 End with <CRLF>.<CRLF>\r\n");
     } else if (line.compare("QUIT", Qt::CaseInsensitive) == 0) {
-        keep_connection.at(client).is_connected = false;
-
         client->write("221 Service closing transmission channel\r\n");
         client->disconnectFromHost();
-    } else if (line.compare("DATA", Qt::CaseInsensitive) == 0) {
-        if (state < State::RCPT_TO) {
-            client->write("503 Bad Sequence\r\n");
-            return;
-        }
-
-        client->write("354 End with <CRLF>.<CRLF>\r\n");
-        state = State::DATA;
+    } else if (line.compare("RSET", Qt::CaseInsensitive) == 0) {
+        session.state = State::HELO;
+        session.total_data.clear();
+        client->write("250 Ok\r\n");
+    } else if (line.compare("NOOP", Qt::CaseInsensitive) == 0) {
+        client->write("250 Ok\r\n");
     } else {
         client->write("500 Unknown Command.\r\n");
     }
 }
 
-
 void SMTPServer::handle_error(const QAbstractSocket::SocketError socketError) const {
-    const auto *socket = qobject_cast<QTcpSocket *>(sender());
-    const char *errorMessage = nullptr;
+    const auto *socket = qobject_cast<QSslSocket *>(sender());
+    qWarning() << "[Socket Error] Client:" << (socket ? socket->peerAddress().toString() : "Unknown")
+            << "Error:" << socketError;
+}
 
-    switch (socketError) {
-        case QAbstractSocket::RemoteHostClosedError:
-            errorMessage = "Remote host closed the connection";
-            break;
-        case QAbstractSocket::HostNotFoundError:
-            errorMessage = "The host was not found. Please check the host name and port settings";
-            break;
-        case QAbstractSocket::ConnectionRefusedError:
-            errorMessage = "The connection was refused by the peer. Make sure the service is running";
-            break;
-        case QAbstractSocket::SocketAccessError:
-            errorMessage = "Socket access error (permission issue)";
-            break;
-        case QAbstractSocket::SocketTimeoutError:
-            errorMessage = "Socket operation timed out";
-            break;
-        case QAbstractSocket::NetworkError:
-            errorMessage = "Network error";
-            break;
-        default:
-            errorMessage = socket ? socket->errorString().toLocal8Bit().data() : "Unknown socket error";
-            break;
+void SMTPServer::handle_ssl_errors(const QList<QSslError> &errors) const {
+    for (const auto &error : errors) {
+        qWarning() << "[SSL Error]:" << error.errorString();
     }
 
-    std::cerr << "[Socket Error] Code: " << socketError << ", Message: " << errorMessage << std::endl;
+    qobject_cast<QSslSocket*>(sender())->ignoreSslErrors();
 }

@@ -32,7 +32,7 @@ void ClientHandler::load_from_file() {
 
         if (client_name.empty() || password.empty()) continue;
 
-        std::cout << "[INFO] Loaded " << client_name << " with pass " << password << " and also " << static_cast<int>(line.find_first_of('c')) << "\n";
+        std::cout << "[INFO] Loaded " << client_name << " with pass " << password << "\n";
         client_to_password.try_emplace(client_name, password);
     }
 
@@ -72,8 +72,14 @@ bool ClientHandler::is_password_valid(const std::string &name, const std::string
     return client_to_password.find(name)->second == hash(password);
 }
 
+bool ClientHandler::is_hashed_password_valid(const std::string &name, const std::string &hashed_password) {
+    if (!has_client(name)) return false;
+
+    return client_to_password.find(name)->second == hashed_password;
+}
+
 void ClientHandler::insert_ip_to_client(const QTcpSocket* client, const std::string &name) {
-    client_ip_to_name.try_emplace(client->peerAddress().toString().toStdString(), name);
+    client_ip_to_name.insert_or_assign(client->peerAddress().toString().toStdString(), name);
 }
 
 std::string ClientHandler::get_name_from_client(const QTcpSocket *client) const {

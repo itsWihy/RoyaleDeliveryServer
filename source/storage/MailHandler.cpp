@@ -71,22 +71,36 @@ bool MailHandler::register_client(const std::string &name) {
 }
 
 void MailHandler::store_mail(const std::string &client_name, const Email &email) {
-    if (!register_client(client_name)) return;
+    if (!register_client(client_name)) {
+        std::cerr << "[ERROR] Could not register or find folder for: " << client_name << std::endl;
+        return;
+    }
 
-    const auto mail_file_name = hash_mail(email);
-    const auto hex_hash = QByteArray{mail_file_name.c_str()};
+    std::string raw_hash = hash_mail(email);
+    QString hex_hash = QString(QByteArray::fromStdString(raw_hash).toHex());
 
-    std::ofstream file{"../data/users/" + client_name + "/" + hex_hash.toHex().toStdString() + ".txt"};
+    std::string path = "../data/users/" + client_name + "/" + hex_hash.toStdString() + ".txt";
+    std::ofstream file{path};
 
+    if (!file.is_open()) {
+        std::cerr << "[ERROR] Failed to open file for writing: " << path << std::endl;
+        return;
+    }
 
-    file << email.content.toStdString();
+    file << "To: " << email.to.toStdString() << "\n";
+    file << "From: " << email.from.toStdString() << "\n";
+    file << "Subject: " << email.subject.toStdString() << "\n";
 
-    file << std::endl;
+    file << email.content.toStdString() << "\n";
+
     file.close();
+    std::cout << "[INFO] Mail stored successfully in " << client_name << "'s folder." << std::endl;
 }
 
 QVector<Email> MailHandler::get_client_mails(const std::string &client_name) {
     const std::filesystem::path directory = "../data/users/" + client_name + "/";
+
+    std::cout << client_name;
 
     QVector<Email> mails;
 
@@ -105,6 +119,7 @@ void MailHandler::delete_mail(const QString &hash) {
         auto hex_hash = QByteArray{hash.toStdString().c_str()};
         std::filesystem::path file_path{dirEntry.path().string() + "/" + hex_hash.toHex().toStdString() + ".txt"};
 
+        std::cout << "[INFO] Deleting mail: " << file_path << std::endl;
         if (std::ifstream file{file_path}; !file.good()) continue;
 
         std::filesystem::remove(file_path);

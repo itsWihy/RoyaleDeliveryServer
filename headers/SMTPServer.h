@@ -5,22 +5,32 @@
 #ifndef ROYALEDELIVERYSERVER_SMTPSERVER_H
 #define ROYALEDELIVERYSERVER_SMTPSERVER_H
 #include <qobject.h>
+#include <QSslSocket>
 #include <QTcpServer>
+
+#include "SslServer.h"
 
 enum class State {
     UNSET = 0,
     HELO = 1,
-    MAIL_FROM = 2,
-    RCPT_TO = 3,
-    DATA = 4
+    AUTH_USER = 2,
+    AUTH_PASS = 3,
+    MAIL_FROM = 4,
+    RCPT_TO = 5,
+    DATA = 6,
+    QUIT = 7
 };
 
-struct client_status {
-    bool is_connected;
-    bool has_started_transaction;
+struct SmtpSession {
+    State state = State::UNSET;
+    QString total_data;
+    QString sender;
+    QString recipient;
+    QString client_name;
+    bool is_authenticated = false;
+    bool is_connected = true;
 };
 
-//expose SMTP connection access, receive emails and store them here. Validate format and stuff ig
 class SMTPServer : public QObject {
     Q_OBJECT
 
@@ -34,27 +44,20 @@ public:
 
     void operator=(const SMTPServer &) = delete;
 
-    //receive SMTP packet and dissect them. Does need to ALSO send packets, but do that later. RN only recv.
 public slots:
-    //return value is cosmetic.
-    bool new_connection();
-
+    void new_connection();
     void client_disconnected();
-
     void handle_client_data();
-
     void handle_error(QAbstractSocket::SocketError socketError) const;
+    void handle_ssl_errors(const QList<QSslError> &errors) const;
 
 private:
-    QTcpServer server;
-    State state;
+    SslServer server;
+    QHash<QSslSocket *, SmtpSession> sessions;
 
     SMTPServer();
 
-    void handle_mail_body(QTcpSocket *client);
-
-public:
-    std::unordered_map<QTcpSocket *, client_status> keep_connection;
+    static void handle_mail_body(QSslSocket *client, SmtpSession &session);
 };
 
 
