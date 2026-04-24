@@ -62,12 +62,12 @@ Email MailHandler::read_from_file(const std::filesystem::path &path) {
 }
 
 bool MailHandler::register_client(const std::string &name) {
-    if (!ClientHandler::get_instance().has_client(name)) return false;
-
     const std::filesystem::path user_folder{"../data/users/" + name};
-    std::filesystem::create_directories(user_folder);
 
-    return true;
+    std::error_code ec;
+    std::filesystem::create_directories(user_folder, ec);
+
+    return std::filesystem::exists(user_folder);
 }
 
 void MailHandler::store_mail(const std::string &client_name, const Email &email) {

@@ -1,6 +1,8 @@
 #ifndef ROYALEDELIVERYSERVER_COMMANDS_H
 #define ROYALEDELIVERYSERVER_COMMANDS_H
 #include <QDataStream>
+#include <qmetatype.h>
+#include <QIODevice>
 
 enum Command {
     SIGN_UP,

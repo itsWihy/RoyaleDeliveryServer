@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QTcpServer>
+#include <QDir>
 
 #include "../headers/Server.h"
 #include "../headers/SMTPServer.h"
@@ -8,6 +9,8 @@
 
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
+
+    QDir::setCurrent(QCoreApplication::applicationDirPath());
 
     Server::get_instance();
     SMTPServer::get_instance();
