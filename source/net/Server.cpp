@@ -16,7 +16,7 @@ Server::Server() : server(this) {
 }
 
 void Server::new_connection() {
-    QTcpSocket *client = server.nextPendingConnection();
+    const QTcpSocket *client = server.nextPendingConnection();
 
     const QString ipAddress = client->peerAddress().toString();
     const int port = client->peerPort();

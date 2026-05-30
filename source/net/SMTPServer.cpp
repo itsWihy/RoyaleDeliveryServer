@@ -110,7 +110,7 @@ void SMTPServer::handle_client_data() {
         }
     } else if (line.startsWith("AUTH LOGIN", Qt::CaseInsensitive)) {
         session.state = State::AUTH_USER;
-        client->write("334 VXNlcm5hbWU6\r\n"); //Usernmae
+        client->write("334 VXNlcm5hbWU6\r\n"); //Usernmae in base64 encoding
     } else if (session.state == State::AUTH_USER) {
         session.client_name = QByteArray::fromBase64(line.toLatin1());
         session.state = State::AUTH_PASS;
