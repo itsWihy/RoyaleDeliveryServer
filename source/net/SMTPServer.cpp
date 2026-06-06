@@ -128,9 +128,9 @@ void SMTPServer::handle_client_data() {
         client->write("220 Ready to start TLS\r\n");
         client->flush();
 
-        // Configure SSL certificates
-        client->setLocalCertificate("../server.crt");
-        client->setPrivateKey("../server.key");
+        // Configure SSL certificates (expected to be in the same folder as the executable)
+        client->setLocalCertificate("server.crt");
+        client->setPrivateKey("server.key");
 
         // Initiate the SSL handshake
         client->startServerEncryption();
