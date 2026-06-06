@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include <QSslSocket>
+#include <QCoreApplication>
 
 #include "../../headers/Server.h"
 #include "../../headers/storage/ClientHandler.h"
@@ -128,9 +129,16 @@ void SMTPServer::handle_client_data() {
         client->write("220 Ready to start TLS\r\n");
         client->flush();
 
-        // Configure SSL certificates (expected to be in the same folder as the executable)
-        client->setLocalCertificate("server.crt");
-        client->setPrivateKey("server.key");
+        // Configure SSL certificates (using absolute paths relative to application)
+        const QString certPath = QCoreApplication::applicationDirPath() + "/server.crt";
+        const QString keyPath = QCoreApplication::applicationDirPath() + "/server.key";
+
+        client->setLocalCertificate(certPath);
+        client->setPrivateKey(keyPath);
+
+        if (client->localCertificate().isNull()) {
+             qWarning() << "Failed to load certificate from" << certPath;
+        }
 
         // Initiate the SSL handshake
         client->startServerEncryption();
