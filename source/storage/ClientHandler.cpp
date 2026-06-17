@@ -128,7 +128,7 @@ bool ClientHandler::is_hashed_password_valid(const std::string &name, const std:
 }
 
 /**
- * @brief Maps a connected socket's IP address to a client name.
+ * @brief Maps a connected socket's IP address and port to a client name.
  * 
  * Used to track which authenticated user is communicating over which socket.
  * 
@@ -136,17 +136,21 @@ bool ClientHandler::is_hashed_password_valid(const std::string &name, const std:
  * @param name The authenticated client name.
  */
 void ClientHandler::insert_ip_to_client(const QTcpSocket* client, const std::string &name) {
-    client_ip_to_name.insert_or_assign(client->peerAddress().toString().toStdString(), name);
+    const std::string identifier = client->peerAddress().toString().toStdString() + ":" + std::to_string(client->peerPort());
+    client_ip_to_name.insert_or_assign(identifier, name);
 }
 
 /**
- * @brief Retrieves the client name associated with a specific socket's IP.
+ * @brief Retrieves the client name associated with a specific socket's IP and port.
  * 
  * @param client Pointer to the QTcpSocket.
- * @return std::string The name of the client associated with the socket's IP.
+ * @return std::string The name of the client associated with the socket, or empty if not found.
  */
 std::string ClientHandler::get_name_from_client(const QTcpSocket *client) const {
-        const auto ip_from_client = client->peerAddress().toString();
-        // Returns the mapped name; throws if not found in client_ip_to_name
-        return client_ip_to_name.at(ip_from_client.toStdString());
+    const std::string identifier = client->peerAddress().toString().toStdString() + ":" + std::to_string(client->peerPort());
+    auto it = client_ip_to_name.find(identifier);
+    if (it != client_ip_to_name.end()) {
+        return it->second;
+    }
+    return "";
 }

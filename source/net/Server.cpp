@@ -26,10 +26,12 @@ Server::Server() : server(this) {
  */
 void Server::new_connection() {
     // Get the next pending connection as a QTcpSocket
-    const QTcpSocket *client = server.nextPendingConnection();
+    QTcpSocket *client = server.nextPendingConnection();
 
     const QString ipAddress = client->peerAddress().toString();
     const int port = client->peerPort();
+
+    std::cout << "New connection from " << ipAddress.toStdString() << ":" << port << std::endl;
 
     // Connect socket signals to their respective handler slots
     connect(client, &QTcpSocket::disconnected, this, &Server::client_disconnected);
@@ -76,8 +78,13 @@ void Server::handle_client_data() const {
             QString name, password;
             stream >> name >> password;
 
+            std::cout << "[SIGNUP] Attempt for user: " << name.toStdString() << std::endl;
+
             // Attempt to register a new user
             const bool result = ClientHandler::get_instance().insert_new_client(name.toStdString(), password.toStdString());
+
+            std::cout << "[SIGNUP] Result for " << name.toStdString() << ": " << (result ? "SUCCESS" : "FAILED") << std::endl;
+
             // Send back the status of the signup operation
             send_cmd_to_client<QString>(socket, STATUS, {"SIGNUP", result == 0 ? "FALSE" : "TRUE"});
 
@@ -92,8 +99,13 @@ void Server::handle_client_data() const {
             QString name, password;
             stream >> name >> password;
 
+            std::cout << "[LOGIN] Attempt for user: " << name.toStdString() << std::endl;
+
             // Validate user credentials
             const bool result = ClientHandler::get_instance().is_password_valid(name.toStdString(), password.toStdString());
+
+            std::cout << "[LOGIN] Result for " << name.toStdString() << ": " << (result ? "SUCCESS" : "FAILED") << std::endl;
+
             // Send back the status of the login operation
             send_cmd_to_client<QString>(socket, STATUS, {"LOGIN", result == 0 ? "FALSE" : "TRUE"});
 

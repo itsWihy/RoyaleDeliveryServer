@@ -12,6 +12,8 @@
 #include "../headers/storage/ClientHandler.h"
 #include "../headers/storage/MailHandler.h"
 
+#include <iostream>
+
 /**
  * @brief Main function that initializes the server and its components.
  * @param argc Argument count.
@@ -19,6 +21,7 @@
  * @return Execution status code.
  */
 int main(int argc, char *argv[]) {
+    std::cout << "Starting Royale Delivery Server..." << std::endl;
     QCoreApplication a(argc, argv);
 
     // Set the current working directory to the application's directory

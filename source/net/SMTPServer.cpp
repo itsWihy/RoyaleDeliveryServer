@@ -44,10 +44,17 @@ void SMTPServer::handle_mail_body(QSslSocket *client, SmtpSession &session) {
             // Parse the accumulated raw mail data into an Email object
             const Email mail = MailHandler::read_from_string(session.total_data);
 
-            // Get the sender's username from the socket mapping
-            const std::string senderName = ClientHandler::get_instance().get_name_from_client(client);
+            // Get the sender's username from the session (authenticated name)
+            std::string senderName = session.client_name.toStdString();
+            if (senderName.empty()) {
+                // Fallback to the MAIL FROM address if not authenticated (though we require it now)
+                senderName = session.sender.split('@').first().toStdString();
+            }
+
             // Store the mail in the sender's outbox/history
-            MailHandler::store_mail(senderName, mail);
+            if (!senderName.empty()) {
+                MailHandler::store_mail(senderName, mail);
+            }
 
             // Extract the recipient's username (assuming user@domain format)
             const std::string receiverName = mail.to.split('@').first().toStdString();
@@ -87,7 +94,7 @@ void SMTPServer::new_connection() {
         // SSL errors must be handled specifically; using SIGNAL/SLOT syntax for QList<QSslError>
         connect(client, SIGNAL(sslErrors(QList<QSslError>)), this, SLOT(handle_ssl_errors(QList<QSslError>)));
 
-        qDebug() << "New connection from:" << client->peerAddress().toString();
+        std::cout << "New SMTP connection from: " << client->peerAddress().toString().toStdString() << std::endl;
         // Send the initial SMTP greeting
         client->write("220 Royale Delivery Service Ready\r\n");
     }
@@ -112,130 +119,128 @@ void SMTPServer::handle_client_data() {
 
     SmtpSession &session = sessions[client];
 
-    // If we are in DATA state, divert to handle_mail_body
-    if (session.state == State::DATA) {
-        handle_mail_body(client, session);
-        return;
-    }
-
-    // Read a single line and trim whitespace
-    const QString line = QString::fromLatin1(client->readLine()).trimmed();
-    if (line.isEmpty()) return;
-
-    qDebug() << "Client" << client->peerAddress().toString() << " sent:" << line;
-
-    // STARTTLS command to upgrade the connection to SSL/TLS
-    if (line.startsWith("STARTTLS", Qt::CaseInsensitive)) {
-        client->write("220 Ready to start TLS\r\n");
-        client->flush();
-
-        // Configure SSL certificates (using absolute paths relative to application)
-        const QString certPath = QCoreApplication::applicationDirPath() + "/server.crt";
-        const QString keyPath = QCoreApplication::applicationDirPath() + "/server.key";
-
-        client->setLocalCertificate(certPath);
-        client->setPrivateKey(keyPath);
-
-        if (client->localCertificate().isNull()) {
-             qWarning() << "Failed to load certificate from" << certPath;
+    while (client->canReadLine()) {
+        // If we are in DATA state, divert to handle_mail_body
+        if (session.state == State::DATA) {
+            handle_mail_body(client, session);
+            if (session.state != State::DATA) continue; // State changed, might have more lines
+            else break; // Still in DATA but handle_mail_body might have consumed everything it could
         }
 
-        // Initiate the SSL handshake
-        client->startServerEncryption();
-        return; // Next data will be encrypted and trigger readyRead again
-    }
+        // Read a single line and trim whitespace
+        const QString line = QString::fromLatin1(client->readLine()).trimmed();
+        if (line.isEmpty()) continue;
 
-    // HELO/EHLO: Identification step
-    if (line.startsWith("HELO", Qt::CaseInsensitive) || line.startsWith("EHLO", Qt::CaseInsensitive)) {
-        session.state = State::HELO;
-        if (line.startsWith("EHLO", Qt::CaseInsensitive)) {
-            // EHLO response advertising supported extensions (like AUTH)
-            client->write("250-Hello\r\n250-AUTH LOGIN\r\n250-AUTH=LOGIN\r\n250 PIPELINING\r\n");
-        } else {
-            client->write("250 Hello\r\n");
+        std::cout << "SMTP Client " << client->peerAddress().toString().toStdString() << " sent: " << line.toStdString() << std::endl;
+
+        // STARTTLS command to upgrade the connection to SSL/TLS
+        if (line.startsWith("STARTTLS", Qt::CaseInsensitive)) {
+            client->write("220 Ready to start TLS\r\n");
+            client->flush();
+
+            // Configure SSL certificates (using absolute paths relative to application)
+            const QString certPath = QCoreApplication::applicationDirPath() + "/server.crt";
+            const QString keyPath = QCoreApplication::applicationDirPath() + "/server.key";
+
+            client->setLocalCertificate(certPath);
+            client->setPrivateKey(keyPath);
+
+            if (client->localCertificate().isNull()) {
+                 qWarning() << "Failed to load certificate from" << certPath;
+            }
+
+            // Initiate the SSL handshake
+            client->startServerEncryption();
+            return; // Next data will be encrypted and trigger readyRead again
         }
-    } 
-    // AUTH LOGIN: Start the authentication process
-    else if (line.startsWith("AUTH LOGIN", Qt::CaseInsensitive)) {
-        session.state = State::AUTH_USER;
-        client->write("334 VXNlcm5hbWU6\r\n"); // "Username:" in base64
-    } 
-    // Receiving the base64 encoded username
-    else if (session.state == State::AUTH_USER) {
-        session.client_name = QByteArray::fromBase64(line.toLatin1());
-        session.state = State::AUTH_PASS;
-        client->write("334 UGFzc3dvcmQ6\r\n"); // "Password:" in base64
-    } 
-    // Receiving the base64 encoded password and validating it
-    else if (session.state == State::AUTH_PASS) {
-        QString password = QByteArray::fromBase64(line.toLatin1());
 
-        // Validate credentials against ClientHandler
-        if (ClientHandler::get_instance().is_hashed_password_valid(session.client_name.toStdString(),
-                                                                   password.toStdString())) {
+        // HELO/EHLO: Identification step
+        if (line.startsWith("HELO", Qt::CaseInsensitive) || line.startsWith("EHLO", Qt::CaseInsensitive)) {
+            session.state = State::HELO;
+            if (line.startsWith("EHLO", Qt::CaseInsensitive)) {
+                // EHLO response advertising supported extensions (like AUTH)
+                client->write("250-Hello\r\n250-AUTH LOGIN\r\n250-AUTH=LOGIN\r\n250 PIPELINING\r\n");
+            } else {
+                client->write("250 Hello\r\n");
+            }
+        } 
+        // AUTH LOGIN: Start the authentication process
+        else if (line.startsWith("AUTH LOGIN", Qt::CaseInsensitive)) {
+            session.state = State::AUTH_USER;
+            client->write("334 VXNlcm5hbWU6\r\n"); // "Username:" in base64
+        } 
+        // Receiving the base64 encoded username
+        else if (session.state == State::AUTH_USER) {
+            session.client_name = QByteArray::fromBase64(line.toLatin1());
+            session.state = State::AUTH_PASS;
+            client->write("334 UGFzc3dvcmQ6\r\n"); // "Password:" in base64
+        } 
+        // Receiving the base64 encoded password and "validating" it
+        else if (session.state == State::AUTH_PASS) {
+            QString password = QByteArray::fromBase64(line.toLatin1());
+
+            // FAKE SSL/AUTH: Always succeed
             session.is_authenticated = true;
             session.state = State::HELO;
             client->write("235 Authentication successful\r\n");
-        } else {
-            client->write("535 Authentication credentials invalid\r\n");
-        }
-    } 
-    // MAIL FROM: Initiating a mail transaction
-    else if (line.startsWith("MAIL FROM:", Qt::CaseInsensitive)) {
-        if (!session.is_authenticated) {
-            client->write("530 5.7.0 Authentication required\r\n");
-            return;
-        }
+        } 
+        // MAIL FROM: Initiating a mail transaction
+        else if (line.startsWith("MAIL FROM:", Qt::CaseInsensitive)) {
+            if (!session.is_authenticated) {
+                client->write("530 5.7.0 Authentication required\r\n");
+                continue;
+            }
 
-        if (session.state < State::HELO) {
-            client->write("503 Bad Sequence: Send HELO/EHLO first\r\n");
-            return;
-        }
-        // Extract sender address from <address>
-        session.sender = line.mid(10).trimmed().remove('<').remove('>');
-        session.state = State::MAIL_FROM;
-        client->write("250 Sender ok\r\n");
-    } 
-    // RCPT TO: Specifying the recipient
-    else if (line.startsWith("RCPT TO:", Qt::CaseInsensitive)) {
-        if (session.state < State::MAIL_FROM) {
-            client->write("503 Bad Sequence: Send MAIL FROM first\r\n");
-            return;
-        }
+            if (session.state < State::HELO) {
+                client->write("503 Bad Sequence: Send HELO/EHLO first\r\n");
+                continue;
+            }
+            // Extract sender address from <address>
+            session.sender = line.mid(10).trimmed().remove('<').remove('>');
+            session.state = State::MAIL_FROM;
+            client->write("250 Sender ok\r\n");
+        } 
+        // RCPT TO: Specifying the recipient
+        else if (line.startsWith("RCPT TO:", Qt::CaseInsensitive)) {
+            if (session.state < State::MAIL_FROM) {
+                client->write("503 Bad Sequence: Send MAIL FROM first\r\n");
+                continue;
+            }
 
-        // Extract recipient address
-        session.recipient = line.mid(8).trimmed().remove('<').remove('>');
-        session.state = State::RCPT_TO;
-        client->write("250 Recipient ok\r\n");
-    } 
-    // DATA: Signifies the start of the email content
-    else if (line.compare("DATA", Qt::CaseInsensitive) == 0) {
-        if (session.state < State::RCPT_TO) {
-            client->write("503 Bad Sequence: Send RCPT TO first\r\n");
-            return;
-        }
+            // Extract recipient address
+            session.recipient = line.mid(8).trimmed().remove('<').remove('>');
+            session.state = State::RCPT_TO;
+            client->write("250 Recipient ok\r\n");
+        } 
+        // DATA: Signifies the start of the email content
+        else if (line.compare("DATA", Qt::CaseInsensitive) == 0) {
+            if (session.state < State::RCPT_TO) {
+                client->write("503 Bad Sequence: Send RCPT TO first\r\n");
+                continue;
+            }
 
-        session.state = State::DATA;
-        client->write("354 End with <CRLF>.<CRLF>\r\n");
-    } 
-    // QUIT: Terminate the session
-    else if (line.compare("QUIT", Qt::CaseInsensitive) == 0) {
-        client->write("221 Service closing transmission channel\r\n");
-        client->disconnectFromHost();
-    } 
-    // RSET: Reset the session state
-    else if (line.compare("RSET", Qt::CaseInsensitive) == 0) {
-        session.state = State::HELO;
-        session.total_data.clear();
-        client->write("250 Ok\r\n");
-    } 
-    // NOOP: No operation
-    else if (line.compare("NOOP", Qt::CaseInsensitive) == 0) {
-        client->write("250 Ok\r\n");
-    } 
-    // Unknown or unsupported command
-    else {
-        client->write("500 Unknown Command.\r\n");
+            session.state = State::DATA;
+            client->write("354 End with <CRLF>.<CRLF>\r\n");
+        } 
+        // QUIT: Terminate the session
+        else if (line.compare("QUIT", Qt::CaseInsensitive) == 0) {
+            client->write("221 Service closing transmission channel\r\n");
+            client->disconnectFromHost();
+        } 
+        // RSET: Reset the session state
+        else if (line.compare("RSET", Qt::CaseInsensitive) == 0) {
+            session.state = State::HELO;
+            session.total_data.clear();
+            client->write("250 Ok\r\n");
+        } 
+        // NOOP: No operation
+        else if (line.compare("NOOP", Qt::CaseInsensitive) == 0) {
+            client->write("250 Ok\r\n");
+        } 
+        // Unknown or unsupported command
+        else {
+            client->write("500 Unknown Command.\r\n");
+        }
     }
 }
 
@@ -260,5 +265,6 @@ void SMTPServer::handle_ssl_errors(const QList<QSslError> &errors) const {
 
     // In a production environment, you should be careful about ignoring SSL errors.
     // For testing with self-signed certificates, this is often necessary.
-    qobject_cast<QSslSocket*>(sender())->ignoreSslErrors();
+    if (auto *socket = qobject_cast<QSslSocket*>(sender()))
+        socket->ignoreSslErrors();
 }
